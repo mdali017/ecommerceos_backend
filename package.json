@@ -1,0 +1,51 @@
+{
+  "name": "ecommerceos-backend",
+  "version": "1.0.0",
+  "description": "E-commerceOS API — Express + TypeScript + Supabase",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "seed": "tsx src/scripts/seed.ts",
+    "migrate:products": "tsx src/scripts/migrate-products.ts",
+    "migrate:categories": "tsx src/scripts/migrate-categories.ts",
+    "setup:categories": "tsx src/scripts/setup-categories.ts",
+    "setup:hero-slides": "tsx src/scripts/setup-hero-slides.ts",
+    "setup:seasonal-banners": "tsx src/scripts/setup-seasonal-banners.ts",
+    "setup:homepage-brands": "tsx src/scripts/setup-homepage-brands.ts",
+    "setup:promo-banners": "tsx src/scripts/setup-promo-banners.ts",
+    "setup:testimonials": "tsx src/scripts/setup-testimonials.ts",
+    "setup:orders": "tsx src/scripts/setup-orders.ts",
+    "setup:products": "tsx src/scripts/setup-products.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.1",
+    "bcryptjs": "^3.0.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "helmet": "^8.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "multer": "^2.2.0",
+    "pg": "^8.22.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/jsonwebtoken": "^9.0.9",
+    "@types/morgan": "^1.9.9",
+    "@types/multer": "^2.2.0",
+    "@types/node": "^22.13.10",
+    "@types/pg": "^8.20.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
+  }
+}
