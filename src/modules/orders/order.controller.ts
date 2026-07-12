@@ -59,3 +59,12 @@ export async function updateOrderStatus(req: Request, res: Response, next: NextF
     return next(error);
   }
 }
+
+export async function updateOrderShipping(req: Request, res: Response, next: NextFunction) {
+  try {
+    const order = await orderService.updateOrderShipping(String(req.params.id), req.body);
+    return sendSuccess(res, order, 200, "Order shipping updated");
+  } catch (error) {
+    return next(error);
+  }
+}

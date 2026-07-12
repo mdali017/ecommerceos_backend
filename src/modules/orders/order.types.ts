@@ -5,7 +5,10 @@ export type OrderStatus =
   | "shipped"
   | "delivered"
   | "completed"
-  | "cancelled";
+  | "cancelled"
+  | "returned";
+
+export type PaymentStatus = "pending" | "paid";
 
 export interface OrderRow {
   id: string;
@@ -17,11 +20,16 @@ export interface OrderRow {
   customer_address: string;
   status: OrderStatus;
   payment_method: string;
+  payment_status: PaymentStatus;
   subtotal: number;
   delivery_charge: number;
   discount: number;
   total: number;
   notes: string;
+  shipping_zone_id?: string | null;
+  courier_name?: string | null;
+  tracking_number?: string | null;
+  estimated_delivery?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -60,11 +68,16 @@ export interface OrderProfile {
   customerAddress: string;
   status: OrderStatus;
   paymentMethod: string;
+  paymentStatus: PaymentStatus;
   subtotal: number;
   deliveryCharge: number;
   discount: number;
   total: number;
   notes: string;
+  shippingZoneId: string | null;
+  courierName: string | null;
+  trackingNumber: string | null;
+  estimatedDelivery: string | null;
   itemCount: number;
   items: OrderItemProfile[];
   createdAt: string;
@@ -77,6 +90,7 @@ export interface OrderSummary {
   customerName: string;
   customerPhone: string;
   status: OrderStatus;
+  paymentStatus: PaymentStatus;
   total: number;
   itemCount: number;
   createdAt: string;

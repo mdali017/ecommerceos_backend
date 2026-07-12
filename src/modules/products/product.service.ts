@@ -10,7 +10,7 @@ import type {
   ProductRow,
   ProductStatus,
 } from "./product.types";
-import type { BulkProductInput, PublicProductsQuery } from "./product.validation";
+import type { BulkProductInput, CreateProductInput, PublicProductsQuery, UpdateProductInput } from "./product.validation";
 
 const STORAGE_BUCKET = "product-images";
 
@@ -452,4 +452,153 @@ export async function uploadProductImages(files: Express.Multer.File[]): Promise
   }
 
   return urls;
+}
+
+export async function getProductById(id: string): Promise<ProductProfile> {
+  const { data, error } = await supabase.from("products").select().eq("id", id).maybeSingle();
+
+  if (error) throw new Error(`Failed to fetch product: ${error.message}`);
+  if (!data) throw new NotFoundError("Product not found");
+
+  const images = await getProductImages((data as ProductRow).id);
+  return toProductProfile(data as ProductRow, images);
+}
+
+export async function createProduct(input: CreateProductInput): Promise<ProductProfile> {
+  const sku = input.sku.trim();
+  const { data: existing, error: lookupError } = await supabase
+    .from("products")
+    .select("id")
+    .eq("sku", sku)
+    .maybeSingle();
+
+  if (lookupError) throw new Error(`Product create failed: ${lookupError.message}`);
+  if (existing) throw new AppError(409, "Product with this SKU already exists", "CONFLICT");
+
+  const baseSlug = generateSlug(input.productName, sku);
+  const slug = await ensureUniqueSlug(baseSlug, sku);
+  const row = mapInputToDbRow(input, slug);
+  const imageUrls = [
+    ...(input.imageUrl?.trim() ? [input.imageUrl.trim()] : []),
+    ...(input.imageUrls ?? []),
+  ].filter(Boolean);
+
+  const { data, error } = await supabase.from("products").insert(row).select().single();
+  if (error) throw new Error(`Product create failed: ${error.message}`);
+
+  const product = data as ProductRow;
+  if (imageUrls.length > 0) {
+    await replaceProductImages(product.id, imageUrls);
+  }
+
+  return toProductProfile(product, imageUrls);
+}
+
+export async function updateProduct(
+  id: string,
+  input: UpdateProductInput
+): Promise<ProductProfile> {
+  const { data: current, error: lookupError } = await supabase
+    .from("products")
+    .select()
+    .eq("id", id)
+    .maybeSingle();
+
+  if (lookupError) throw new Error(`Product update failed: ${lookupError.message}`);
+  if (!current) throw new NotFoundError("Product not found");
+
+  const currentRow = current as ProductRow;
+
+  if (input.sku && input.sku.trim() !== currentRow.sku) {
+    const { data: skuOwner, error: skuError } = await supabase
+      .from("products")
+      .select("id")
+      .eq("sku", input.sku.trim())
+      .maybeSingle();
+
+    if (skuError) throw new Error(`Product update failed: ${skuError.message}`);
+    if (skuOwner && skuOwner.id !== id) {
+      throw new AppError(409, "Product with this SKU already exists", "CONFLICT");
+    }
+  }
+
+  const merged: BulkProductInput = {
+    sku: input.sku?.trim() ?? currentRow.sku,
+    barcode: input.barcode ?? currentRow.barcode,
+    productName: input.productName?.trim() ?? currentRow.product_name,
+    genericName: input.genericName ?? currentRow.generic_name,
+    brand: input.brand ?? currentRow.brand,
+    category: input.category ?? currentRow.category,
+    subcategory: input.subcategory ?? currentRow.subcategory,
+    description: input.description ?? currentRow.description,
+    unit: input.unit ?? currentRow.unit,
+    packSize: input.packSize ?? currentRow.pack_size,
+    purchasePrice: input.purchasePrice ?? currentRow.purchase_price,
+    costPrice: input.costPrice ?? currentRow.cost_price,
+    sellingPrice: input.sellingPrice ?? currentRow.selling_price,
+    offerPrice: input.offerPrice ?? currentRow.offer_price,
+    taxPercent: input.taxPercent ?? currentRow.tax_percent,
+    discountPercent: input.discountPercent ?? currentRow.discount_percent,
+    stockQty: input.stockQty ?? currentRow.stock_qty,
+    minStock: input.minStock ?? currentRow.min_stock,
+    maxStock: input.maxStock ?? currentRow.max_stock,
+    batchNo: input.batchNo ?? currentRow.batch_no,
+    expiryDate: input.expiryDate ?? currentRow.expiry_date ?? "",
+    manufactureDate: input.manufactureDate ?? currentRow.manufacture_date ?? "",
+    supplier: input.supplier ?? currentRow.supplier,
+    manufacturer: input.manufacturer ?? currentRow.manufacturer,
+    weight: input.weight ?? currentRow.weight,
+    color: input.color ?? currentRow.color,
+    size: input.size ?? currentRow.size,
+    variant: input.variant ?? currentRow.variant,
+    imageUrl: input.imageUrl ?? currentRow.image_url,
+    status: input.status ?? currentRow.status,
+    featured: input.featured ?? (currentRow.featured ? "yes" : "no"),
+    tags: input.tags ?? currentRow.tags,
+    notes: input.notes ?? currentRow.notes,
+    imageUrls: input.imageUrls ?? [],
+  };
+
+  const slug =
+    input.productName && input.productName.trim() !== currentRow.product_name
+      ? await ensureUniqueSlug(generateSlug(merged.productName, merged.sku), merged.sku, id)
+      : currentRow.slug;
+
+  const row = mapInputToDbRow(merged, slug);
+  const imageUrls = [
+    ...(input.imageUrl?.trim() ? [input.imageUrl.trim()] : []),
+    ...(input.imageUrls ?? []),
+  ].filter(Boolean);
+
+  const { data, error } = await supabase
+    .from("products")
+    .update(row)
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error) throw new Error(`Product update failed: ${error.message}`);
+
+  const product = data as ProductRow;
+  if (imageUrls.length > 0) {
+    await replaceProductImages(product.id, imageUrls);
+    return toProductProfile(product, imageUrls);
+  }
+
+  const images = await getProductImages(product.id);
+  return toProductProfile(product, images);
+}
+
+export async function deleteProduct(id: string): Promise<void> {
+  const { data, error: lookupError } = await supabase
+    .from("products")
+    .select("id")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (lookupError) throw new Error(`Product delete failed: ${lookupError.message}`);
+  if (!data) throw new NotFoundError("Product not found");
+
+  const { error } = await supabase.from("products").delete().eq("id", id);
+  if (error) throw new Error(`Product delete failed: ${error.message}`);
 }

@@ -36,6 +36,18 @@ export const checkoutActivateSchema = z.object({
   password: passwordSchema,
 });
 
+export const customerUpdateProfileSchema = z.object({
+  name: z.string().trim().min(2, "Name must be at least 2 characters").optional(),
+  phone: phoneSchema.optional(),
+  email: emailSchema.optional(),
+  address: z.string().trim().min(1, "Address is required").optional(),
+});
+
+export const customerUpdatePasswordSchema = z.object({
+  currentPassword: passwordSchema,
+  newPassword: passwordSchema,
+});
+
 export const adminLoginSchema = z.object({
   email: emailSchema,
   password: passwordSchema,
@@ -48,5 +60,7 @@ export const refreshTokenSchema = z.object({
 export type CustomerLoginInput = z.infer<typeof customerLoginSchema>;
 export type CustomerRegisterInput = z.infer<typeof customerRegisterSchema>;
 export type CheckoutActivateInput = z.infer<typeof checkoutActivateSchema>;
+export type CustomerUpdateProfileInput = z.infer<typeof customerUpdateProfileSchema>;
+export type CustomerUpdatePasswordInput = z.infer<typeof customerUpdatePasswordSchema>;
 export type AdminLoginInput = z.infer<typeof adminLoginSchema>;
 export type RefreshTokenInput = z.infer<typeof refreshTokenSchema>;

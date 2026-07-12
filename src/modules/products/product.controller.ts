@@ -56,3 +56,39 @@ export async function uploadImages(req: Request, res: Response, next: NextFuncti
     return next(error);
   }
 }
+
+export async function getProductById(req: Request, res: Response, next: NextFunction) {
+  try {
+    const product = await productService.getProductById(String(req.params.id));
+    return sendSuccess(res, product);
+  } catch (error) {
+    return next(error);
+  }
+}
+
+export async function createProduct(req: Request, res: Response, next: NextFunction) {
+  try {
+    const product = await productService.createProduct(req.body);
+    return sendSuccess(res, product, 201, "Product created");
+  } catch (error) {
+    return next(error);
+  }
+}
+
+export async function updateProduct(req: Request, res: Response, next: NextFunction) {
+  try {
+    const product = await productService.updateProduct(String(req.params.id), req.body);
+    return sendSuccess(res, product, 200, "Product updated");
+  } catch (error) {
+    return next(error);
+  }
+}
+
+export async function deleteProduct(req: Request, res: Response, next: NextFunction) {
+  try {
+    await productService.deleteProduct(String(req.params.id));
+    return sendSuccess(res, null, 200, "Product deleted");
+  } catch (error) {
+    return next(error);
+  }
+}

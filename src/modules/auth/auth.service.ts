@@ -29,6 +29,8 @@ import type {
   CheckoutActivateInput,
   CustomerLoginInput,
   CustomerRegisterInput,
+  CustomerUpdatePasswordInput,
+  CustomerUpdateProfileInput,
 } from "./auth.validation";
 
 function toCustomerProfile(row: CustomerRow): CustomerProfile {
@@ -350,4 +352,116 @@ export async function getMe(userId: string, role: "customer" | "admin"): Promise
   }
 
   return { role: "admin", user: toAdminProfile(data as AdminRow) };
+}
+
+export async function updateCustomerProfile(
+  customerId: string,
+  input: CustomerUpdateProfileInput
+): Promise<CustomerProfile> {
+  const { data: existing, error: lookupError } = await supabase
+    .from("customers")
+    .select()
+    .eq("id", customerId)
+    .maybeSingle();
+
+  if (lookupError) {
+    throw new Error(`Profile update failed: ${lookupError.message}`);
+  }
+
+  if (!existing) {
+    throw new NotFoundError("Customer not found");
+  }
+
+  const current = existing as CustomerRow;
+  const phone = input.phone?.trim() ?? current.phone;
+  const email = (input.email?.trim() ?? current.email).toLowerCase();
+
+  if (phone !== current.phone) {
+    const { data: phoneOwner, error: phoneError } = await supabase
+      .from("customers")
+      .select("id")
+      .eq("phone", phone)
+      .maybeSingle();
+
+    if (phoneError) {
+      throw new Error(`Profile update failed: ${phoneError.message}`);
+    }
+
+    if (phoneOwner && phoneOwner.id !== customerId) {
+      throw new ConflictError("Phone already used by another account");
+    }
+  }
+
+  if (email !== current.email) {
+    const { data: emailOwner, error: emailError } = await supabase
+      .from("customers")
+      .select("id")
+      .eq("email", email)
+      .maybeSingle();
+
+    if (emailError) {
+      throw new Error(`Profile update failed: ${emailError.message}`);
+    }
+
+    if (emailOwner && emailOwner.id !== customerId) {
+      throw new ConflictError("Email already used by another account");
+    }
+  }
+
+  const { data, error } = await supabase
+    .from("customers")
+    .update({
+      name: input.name?.trim() ?? current.name,
+      phone,
+      email,
+      address: input.address?.trim() ?? current.address,
+    })
+    .eq("id", customerId)
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error(`Profile update failed: ${error.message}`);
+  }
+
+  return toCustomerProfile(data as CustomerRow);
+}
+
+export async function updateCustomerPassword(
+  customerId: string,
+  input: CustomerUpdatePasswordInput
+): Promise<void> {
+  const { data: existing, error: lookupError } = await supabase
+    .from("customers")
+    .select("password_hash")
+    .eq("id", customerId)
+    .maybeSingle();
+
+  if (lookupError) {
+    throw new Error(`Password update failed: ${lookupError.message}`);
+  }
+
+  if (!existing) {
+    throw new NotFoundError("Customer not found");
+  }
+
+  const isValid = await comparePassword(
+    input.currentPassword,
+    (existing as Pick<CustomerRow, "password_hash">).password_hash
+  );
+
+  if (!isValid) {
+    throw new UnauthorizedError("Current password is incorrect");
+  }
+
+  const passwordHash = await hashPassword(input.newPassword);
+
+  const { error } = await supabase
+    .from("customers")
+    .update({ password_hash: passwordHash })
+    .eq("id", customerId);
+
+  if (error) {
+    throw new Error(`Password update failed: ${error.message}`);
+  }
 }

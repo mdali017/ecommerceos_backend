@@ -8,6 +8,7 @@ const orderStatusSchema = z.enum([
   "delivered",
   "completed",
   "cancelled",
+  "returned",
 ]);
 
 export const createOrderSchema = z.object({
@@ -17,6 +18,8 @@ export const createOrderSchema = z.object({
   customerAddress: z.string().trim().min(1, "Delivery address is required"),
   paymentMethod: z.literal("cod").optional().default("cod"),
   notes: z.string().trim().optional().default(""),
+  couponCode: z.string().trim().optional(),
+  shippingZoneId: z.string().trim().optional(),
   items: z
     .array(
       z.object({
@@ -35,5 +38,12 @@ export const updateOrderStatusSchema = z.object({
   status: orderStatusSchema,
 });
 
+export const updateOrderShippingSchema = z.object({
+  courierName: z.string().trim().optional().default(""),
+  trackingNumber: z.string().trim().optional().default(""),
+  estimatedDelivery: z.string().trim().optional().default(""),
+});
+
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;
 export type UpdateOrderStatusInput = z.infer<typeof updateOrderStatusSchema>;
+export type UpdateOrderShippingInput = z.infer<typeof updateOrderShippingSchema>;

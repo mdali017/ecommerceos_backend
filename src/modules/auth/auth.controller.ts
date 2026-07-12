@@ -81,3 +81,37 @@ export async function getMe(req: Request, res: Response, next: NextFunction) {
     return next(error);
   }
 }
+
+export async function updateCustomerProfile(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    if (!req.user || req.user.role !== "customer") {
+      return next(new UnauthorizedError("Customer access required"));
+    }
+
+    const result = await authService.updateCustomerProfile(req.user.sub, req.body);
+    return sendSuccess(res, result, 200, "Profile updated successfully");
+  } catch (error) {
+    return next(error);
+  }
+}
+
+export async function updateCustomerPassword(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    if (!req.user || req.user.role !== "customer") {
+      return next(new UnauthorizedError("Customer access required"));
+    }
+
+    await authService.updateCustomerPassword(req.user.sub, req.body);
+    return sendSuccess(res, null, 200, "Password updated successfully");
+  } catch (error) {
+    return next(error);
+  }
+}

@@ -7,7 +7,7 @@ import {
 } from "../../shared/middleware/auth.middleware";
 import { validate } from "../../shared/middleware/validate.middleware";
 import * as orderController from "./order.controller";
-import { createOrderSchema, updateOrderStatusSchema } from "./order.validation";
+import { createOrderSchema, updateOrderShippingSchema, updateOrderStatusSchema } from "./order.validation";
 
 const router = Router();
 
@@ -28,6 +28,13 @@ router.patch(
   authenticateAdmin,
   validate(updateOrderStatusSchema),
   orderController.updateOrderStatus
+);
+
+router.patch(
+  "/:id/shipping",
+  authenticateAdmin,
+  validate(updateOrderShippingSchema),
+  orderController.updateOrderShipping
 );
 
 export default router;

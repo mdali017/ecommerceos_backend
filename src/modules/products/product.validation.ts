@@ -44,6 +44,12 @@ export const bulkUploadSchema = z.object({
   products: z.array(bulkProductItemSchema).min(1, "At least one product is required"),
 });
 
+export const createProductSchema = bulkProductItemSchema;
+export const updateProductSchema = bulkProductItemSchema.partial().extend({
+  sku: z.string().trim().min(1).optional(),
+  productName: z.string().trim().min(1).optional(),
+});
+
 export const publicProductsQuerySchema = z.object({
   page: z.coerce.number().int().min(1).optional().default(1),
   limit: z.coerce.number().int().min(1).max(100).optional().default(20),
@@ -60,4 +66,6 @@ export const publicProductsQuerySchema = z.object({
 
 export type BulkProductInput = z.infer<typeof bulkProductItemSchema>;
 export type BulkUploadInput = z.infer<typeof bulkUploadSchema>;
+export type CreateProductInput = z.infer<typeof createProductSchema>;
+export type UpdateProductInput = z.infer<typeof updateProductSchema>;
 export type PublicProductsQuery = z.infer<typeof publicProductsQuerySchema>;

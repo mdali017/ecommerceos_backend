@@ -1,4 +1,5 @@
 import { Router } from "express";
+import adminRoutes from "../modules/admin/admin.routes";
 import authRoutes from "../modules/auth/auth.routes";
 import categoryRoutes from "../modules/categories/category.routes";
 import homepageBrandRoutes from "../modules/homepage-brands/homepage-brand.routes";
@@ -8,11 +9,18 @@ import promoBannerRoutes from "../modules/promo-banners/promo-banner.routes";
 import seasonalBannerRoutes from "../modules/seasonal-banners/seasonal-banner.routes";
 import testimonialRoutes from "../modules/testimonials/testimonial.routes";
 import orderRoutes from "../modules/orders/order.routes";
+import reviewRoutes from "../modules/reviews/review.routes";
+import couponRoutes from "../modules/coupons/coupon.routes";
+import wishlistRoutes from "../modules/wishlist/wishlist.routes";
+import notificationRoutes from "../modules/notifications/notification.routes";
+import shippingRoutes from "../modules/shipping/shipping.routes";
+import returnRoutes from "../modules/returns/return.routes";
 import homepageProductSectionRoutes from "../modules/homepage-product-sections/homepage-product-section.routes";
 
 const router = Router();
 
 router.use("/auth", authRoutes);
+router.use("/admin", adminRoutes);
 router.use("/categories", categoryRoutes);
 router.use("/brands", homepageBrandRoutes);
 router.use("/hero-slides", heroSlideRoutes);
@@ -21,6 +29,12 @@ router.use("/seasonal-banners", seasonalBannerRoutes);
 router.use("/testimonials", testimonialRoutes);
 router.use("/products", productRoutes);
 router.use("/orders", orderRoutes);
+router.use("/reviews", reviewRoutes);
+router.use("/coupons", couponRoutes);
+router.use("/wishlist", wishlistRoutes);
+router.use("/notifications", notificationRoutes);
+router.use("/shipping", shippingRoutes);
+router.use("/returns", returnRoutes);
 router.use("/homepage-product-sections", homepageProductSectionRoutes);
 
 export default router;

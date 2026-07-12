@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { authenticate } from "../../shared/middleware/auth.middleware";
+import { authenticate, authenticateCustomer } from "../../shared/middleware/auth.middleware";
 import { validate } from "../../shared/middleware/validate.middleware";
 import * as authController from "./auth.controller";
 import {
@@ -7,6 +7,8 @@ import {
   checkoutActivateSchema,
   customerLoginSchema,
   customerRegisterSchema,
+  customerUpdatePasswordSchema,
+  customerUpdateProfileSchema,
   refreshTokenSchema,
 } from "./auth.validation";
 
@@ -37,5 +39,19 @@ router.post("/refresh", validate(refreshTokenSchema), authController.refreshToke
 router.post("/logout", validate(refreshTokenSchema), authController.logout);
 
 router.get("/me", authenticate(), authController.getMe);
+
+router.patch(
+  "/customer/profile",
+  authenticateCustomer,
+  validate(customerUpdateProfileSchema),
+  authController.updateCustomerProfile
+);
+
+router.patch(
+  "/customer/password",
+  authenticateCustomer,
+  validate(customerUpdatePasswordSchema),
+  authController.updateCustomerPassword
+);
 
 export default router;

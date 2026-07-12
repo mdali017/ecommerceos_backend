@@ -1,5 +1,17 @@
 import { supabase } from "../../config/supabase";
 import { AppError, ForbiddenError, NotFoundError, ValidationError } from "../../shared/errors/app-error";
+import {
+  recordCouponUsage,
+  validateCouponForOrder,
+} from "../coupons/coupon.service";
+import {
+  notifyOrderPlaced,
+  notifyOrderStatusChanged,
+} from "../notifications/notification.service";
+import {
+  calculateCheckoutTotals,
+  calculateShippingQuote,
+} from "../shipping/shipping.service";
 import type { ProductRow } from "../products/product.types";
 import type {
   OrderItemProfile,
@@ -38,11 +50,16 @@ function toOrderProfile(row: OrderRow, items: OrderItemProfile[]): OrderProfile 
     customerAddress: row.customer_address,
     status: row.status,
     paymentMethod: row.payment_method,
+    paymentStatus: row.payment_status ?? "pending",
     subtotal: Number(row.subtotal),
     deliveryCharge: Number(row.delivery_charge),
     discount: Number(row.discount),
     total: Number(row.total),
     notes: row.notes,
+    shippingZoneId: row.shipping_zone_id ?? null,
+    courierName: row.courier_name ?? null,
+    trackingNumber: row.tracking_number ?? null,
+    estimatedDelivery: row.estimated_delivery ?? null,
     itemCount: items.reduce((sum, item) => sum + item.quantity, 0),
     items,
     createdAt: row.created_at,
@@ -57,6 +74,7 @@ function toOrderSummary(row: OrderRow, itemCount: number): OrderSummary {
     customerName: row.customer_name,
     customerPhone: row.customer_phone,
     status: row.status,
+    paymentStatus: row.payment_status ?? "pending",
     total: Number(row.total),
     itemCount,
     createdAt: row.created_at,
@@ -70,11 +88,12 @@ function resolveUnitPrice(product: ProductRow): number {
   return selling;
 }
 
-function calculateCharges(subtotal: number) {
-  const deliveryCharge = subtotal >= 2000 ? 0 : 80;
-  const discount = subtotal >= 3000 ? 150 : 0;
-  const total = Math.max(0, subtotal + deliveryCharge - discount);
-  return { deliveryCharge, discount, total };
+function calculateCharges(
+  subtotal: number,
+  shippingQuote: Awaited<ReturnType<typeof calculateShippingQuote>>,
+  coupon?: { discountAmount: number; freeShipping: boolean }
+) {
+  return calculateCheckoutTotals(subtotal, shippingQuote, coupon);
 }
 
 function generateOrderNumber(): string {
@@ -221,28 +240,82 @@ export async function createOrder(
     });
   }
 
-  const { deliveryCharge, discount, total } = calculateCharges(subtotal);
+  const couponCode = input.couponCode?.trim();
+  let appliedCoupon:
+    | { discountAmount: number; freeShipping: boolean; couponId: string; code: string }
+    | undefined;
+
+  if (couponCode) {
+    const validation = await validateCouponForOrder(couponCode, subtotal, customerId);
+    if (!validation.valid || !validation.couponId) {
+      throw new ValidationError(validation.message);
+    }
+    appliedCoupon = {
+      discountAmount: validation.discountAmount,
+      freeShipping: validation.freeShipping,
+      couponId: validation.couponId,
+      code: validation.code,
+    };
+  }
+
+  const shippingQuote = await calculateShippingQuote(
+    subtotal,
+    input.shippingZoneId,
+    appliedCoupon?.freeShipping ?? false
+  );
+
+  const { deliveryCharge, discount, total, estimatedDelivery, shippingZoneId } =
+    calculateCharges(subtotal, shippingQuote, appliedCoupon);
   const orderNumber = generateOrderNumber();
 
-  const { data: orderData, error: orderError } = await supabase
+  const orderPayload: Record<string, unknown> = {
+    order_number: orderNumber,
+    customer_id: customerId ?? null,
+    customer_name: input.customerName.trim(),
+    customer_phone: input.customerPhone.trim(),
+    customer_email: input.customerEmail.trim().toLowerCase(),
+    customer_address: input.customerAddress.trim(),
+    status: "pending",
+    payment_method: input.paymentMethod ?? "cod",
+    subtotal,
+    delivery_charge: deliveryCharge,
+    discount,
+    total,
+    notes: input.notes?.trim() ?? "",
+    shipping_zone_id: shippingZoneId,
+    estimated_delivery: estimatedDelivery,
+  };
+
+  if (appliedCoupon) {
+    orderPayload.coupon_code = appliedCoupon.code;
+    orderPayload.coupon_id = appliedCoupon.couponId;
+  }
+
+  let { data: orderData, error: orderError } = await supabase
     .from("orders")
-    .insert({
-      order_number: orderNumber,
-      customer_id: customerId ?? null,
-      customer_name: input.customerName.trim(),
-      customer_phone: input.customerPhone.trim(),
-      customer_email: input.customerEmail.trim().toLowerCase(),
-      customer_address: input.customerAddress.trim(),
-      status: "pending",
-      payment_method: input.paymentMethod ?? "cod",
-      subtotal,
-      delivery_charge: deliveryCharge,
-      discount,
-      total,
-      notes: input.notes?.trim() ?? "",
-    })
+    .insert(orderPayload)
     .select()
     .single();
+
+  if (orderError && appliedCoupon && orderError.message.includes("coupon")) {
+    delete orderPayload.coupon_code;
+    delete orderPayload.coupon_id;
+    ({ data: orderData, error: orderError } = await supabase
+      .from("orders")
+      .insert(orderPayload)
+      .select()
+      .single());
+  }
+
+  if (orderError && orderError.message.includes("shipping_zone")) {
+    delete orderPayload.shipping_zone_id;
+    delete orderPayload.estimated_delivery;
+    ({ data: orderData, error: orderError } = await supabase
+      .from("orders")
+      .insert(orderPayload)
+      .select()
+      .single());
+  }
 
   if (orderError) raiseOrderDbError("Failed to create order", orderError);
 
@@ -273,6 +346,14 @@ export async function createOrder(
     if (item.product) {
       await deductStock(item.product, item.quantity);
     }
+  }
+
+  if (appliedCoupon) {
+    await recordCouponUsage(appliedCoupon.couponId, order.id, customerId);
+  }
+
+  if (customerId) {
+    await notifyOrderPlaced(customerId, order.order_number, total).catch(() => undefined);
   }
 
   const items = ((insertedItems ?? []) as OrderItemRow[]).map(toOrderItemProfile);
@@ -339,15 +420,81 @@ export async function updateOrderStatus(
 ): Promise<OrderProfile> {
   const current = await getOrderRowByIdentifier(identifier);
 
-  const { data, error } = await supabase
+  // COD: payment auto-confirms when the order is delivered/completed,
+  // otherwise it stays pending.
+  const paymentStatus = status === "delivered" || status === "completed" ? "paid" : "pending";
+
+  let { data, error } = await supabase
     .from("orders")
-    .update({ status })
+    .update({ status, payment_status: paymentStatus })
     .eq("id", current.id)
     .select()
     .single();
 
+  // Fallback for when 013_order_payment_status.sql has not been applied yet
+  if (error && error.message.includes("payment_status")) {
+    ({ data, error } = await supabase
+      .from("orders")
+      .update({ status })
+      .eq("id", current.id)
+      .select()
+      .single());
+  }
+
   if (error) throw new Error(`Failed to update order status: ${error.message}`);
 
+  const updatedOrder = data as OrderRow;
+
+  if (updatedOrder.customer_id && updatedOrder.status !== current.status) {
+    await notifyOrderStatusChanged(
+      updatedOrder.customer_id,
+      updatedOrder.order_number,
+      updatedOrder.status
+    ).catch(() => undefined);
+  }
+
   const items = await fetchOrderItems(current.id);
-  return toOrderProfile(data as OrderRow, items);
+  return toOrderProfile(updatedOrder, items);
+}
+
+export async function updateOrderShipping(
+  identifier: string,
+  input: { courierName?: string; trackingNumber?: string; estimatedDelivery?: string }
+): Promise<OrderProfile> {
+  const current = await getOrderRowByIdentifier(identifier);
+
+  const { data, error } = await supabase
+    .from("orders")
+    .update({
+      courier_name: input.courierName?.trim() ?? "",
+      tracking_number: input.trackingNumber?.trim() ?? "",
+      estimated_delivery: input.estimatedDelivery?.trim() ?? current.estimated_delivery ?? "",
+      status: current.status === "processing" || current.status === "confirmed" ? "shipped" : current.status,
+    })
+    .eq("id", current.id)
+    .select()
+    .single();
+
+  if (error && error.message.includes("courier_name")) {
+    throw new AppError(
+      503,
+      "Order shipping fields are not set up yet. Run supabase/migrations/018_shipping.sql in Supabase SQL Editor.",
+      "SHIPPING_FIELDS_MISSING"
+    );
+  }
+
+  if (error) throw new Error(`Failed to update order shipping: ${error.message}`);
+
+  const updatedOrder = data as OrderRow;
+
+  if (updatedOrder.customer_id) {
+    await notifyOrderStatusChanged(
+      updatedOrder.customer_id,
+      updatedOrder.order_number,
+      "shipped"
+    ).catch(() => undefined);
+  }
+
+  const items = await fetchOrderItems(current.id);
+  return toOrderProfile(updatedOrder, items);
 }
