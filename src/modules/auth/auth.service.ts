@@ -26,6 +26,7 @@ import type {
 } from "./auth.types";
 import type {
   AdminLoginInput,
+  CheckoutActivateInput,
   CustomerLoginInput,
   CustomerRegisterInput,
 } from "./auth.validation";
@@ -104,6 +105,95 @@ export async function registerCustomer(
       throw new ConflictError("Customer with this phone or email already exists");
     }
     throw new Error(`Registration failed: ${error.message}`);
+  }
+
+  const customer = data as CustomerRow;
+  const tokens = createTokenPair(customer.id, "customer", customer.email);
+  await storeRefreshToken(customer.id, "customer", tokens.refreshToken);
+
+  return {
+    user: toCustomerProfile(customer),
+    tokens,
+  };
+}
+
+export async function activateCheckoutCustomer(
+  input: CheckoutActivateInput
+): Promise<CustomerAuthResponse> {
+  const phone = input.phone.trim();
+  const email = input.email.trim().toLowerCase();
+  const passwordHash = await hashPassword(input.password);
+
+  const { data: existingByPhone, error: phoneLookupError } = await supabase
+    .from("customers")
+    .select()
+    .eq("phone", phone)
+    .maybeSingle();
+
+  if (phoneLookupError) {
+    throw new Error(`Checkout activation failed: ${phoneLookupError.message}`);
+  }
+
+  if (existingByPhone) {
+    const { data: emailOwner, error: emailLookupError } = await supabase
+      .from("customers")
+      .select("id")
+      .eq("email", email)
+      .maybeSingle();
+
+    if (emailLookupError) {
+      throw new Error(`Checkout activation failed: ${emailLookupError.message}`);
+    }
+
+    if (emailOwner && emailOwner.id !== existingByPhone.id) {
+      throw new ConflictError("Email already used by another account");
+    }
+
+    const { data, error } = await supabase
+      .from("customers")
+      .update({
+        name: input.name.trim(),
+        email,
+        address: input.address.trim(),
+        password_hash: passwordHash,
+        source: "checkout",
+      })
+      .eq("id", existingByPhone.id)
+      .select()
+      .single();
+
+    if (error) {
+      throw new Error(`Checkout activation failed: ${error.message}`);
+    }
+
+    const customer = data as CustomerRow;
+    const tokens = createTokenPair(customer.id, "customer", customer.email);
+    await storeRefreshToken(customer.id, "customer", tokens.refreshToken);
+
+    return {
+      user: toCustomerProfile(customer),
+      tokens,
+    };
+  }
+
+  const { data, error } = await supabase
+    .from("customers")
+    .insert({
+      name: input.name.trim(),
+      phone,
+      email,
+      address: input.address.trim(),
+      password_hash: passwordHash,
+      source: "checkout",
+    })
+    .select()
+    .single();
+
+  if (error) {
+    if (error.code === "23505") {
+      throw new ConflictError("Customer with this phone or email already exists");
+    }
+    throw new Error(`Checkout activation failed: ${error.message}`);
   }
 
   const customer = data as CustomerRow;

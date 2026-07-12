@@ -16,6 +16,19 @@ export async function registerCustomer(
   }
 }
 
+export async function activateCheckoutCustomer(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const result = await authService.activateCheckoutCustomer(req.body);
+    return sendSuccess(res, result, 200, "Checkout account activated");
+  } catch (error) {
+    return next(error);
+  }
+}
+
 export async function loginCustomer(
   req: Request,
   res: Response,

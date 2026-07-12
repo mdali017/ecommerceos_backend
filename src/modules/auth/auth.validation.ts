@@ -28,6 +28,14 @@ export const customerRegisterSchema = z.object({
   source: z.enum(["campaign", "default", "checkout"]).default("default"),
 });
 
+export const checkoutActivateSchema = z.object({
+  name: z.string().trim().min(2, "Name must be at least 2 characters"),
+  phone: phoneSchema,
+  email: emailSchema,
+  address: z.string().trim().min(1, "Address is required"),
+  password: passwordSchema,
+});
+
 export const adminLoginSchema = z.object({
   email: emailSchema,
   password: passwordSchema,
@@ -39,5 +47,6 @@ export const refreshTokenSchema = z.object({
 
 export type CustomerLoginInput = z.infer<typeof customerLoginSchema>;
 export type CustomerRegisterInput = z.infer<typeof customerRegisterSchema>;
+export type CheckoutActivateInput = z.infer<typeof checkoutActivateSchema>;
 export type AdminLoginInput = z.infer<typeof adminLoginSchema>;
 export type RefreshTokenInput = z.infer<typeof refreshTokenSchema>;

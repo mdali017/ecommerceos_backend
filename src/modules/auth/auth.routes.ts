@@ -4,6 +4,7 @@ import { validate } from "../../shared/middleware/validate.middleware";
 import * as authController from "./auth.controller";
 import {
   adminLoginSchema,
+  checkoutActivateSchema,
   customerLoginSchema,
   customerRegisterSchema,
   refreshTokenSchema,
@@ -15,6 +16,12 @@ router.post(
   "/customer/register",
   validate(customerRegisterSchema),
   authController.registerCustomer
+);
+
+router.post(
+  "/customer/checkout-activate",
+  validate(checkoutActivateSchema),
+  authController.activateCheckoutCustomer
 );
 
 router.post(

@@ -1,5 +1,5 @@
 import { supabase } from "../../config/supabase";
-import { ForbiddenError, NotFoundError, ValidationError } from "../../shared/errors/app-error";
+import { AppError, ForbiddenError, NotFoundError, ValidationError } from "../../shared/errors/app-error";
 import type { ProductRow } from "../products/product.types";
 import type {
   OrderItemProfile,
@@ -81,13 +81,25 @@ function generateOrderNumber(): string {
   return `KF-${Date.now().toString().slice(-8)}`;
 }
 
+function raiseOrderDbError(action: string, error: { message: string }): never {
+  if (error.message.includes("Could not find the table") && error.message.includes("orders")) {
+    throw new AppError(
+      503,
+      "Orders table is not set up yet. Run npm run setup:orders or execute supabase/migrations/010_orders.sql in Supabase SQL Editor.",
+      "ORDERS_TABLE_MISSING"
+    );
+  }
+
+  throw new Error(`${action}: ${error.message}`);
+}
+
 function deriveStatus(stockQty: number, minStock: number): string {
   if (stockQty <= 0) return "out_of_stock";
   if (minStock > 0 && stockQty <= minStock) return "low_stock";
   return "active";
 }
 
-async function fetchProductByIdentifier(identifier: string): Promise<ProductRow> {
+async function fetchProductByIdentifier(identifier: string): Promise<ProductRow | null> {
   const trimmed = identifier.trim();
   const column = UUID_RE.test(trimmed) ? "id" : "slug";
 
@@ -98,7 +110,7 @@ async function fetchProductByIdentifier(identifier: string): Promise<ProductRow>
     .maybeSingle();
 
   if (error) throw new Error(`Failed to fetch product: ${error.message}`);
-  if (!data) throw new NotFoundError(`Product not found: ${trimmed}`);
+  if (!data) return null;
 
   return data as ProductRow;
 }
@@ -161,7 +173,9 @@ export async function createOrder(
   customerId?: string
 ): Promise<OrderProfile> {
   const resolvedItems: {
-    product: ProductRow;
+    product: ProductRow | null;
+    productName: string;
+    productSlug: string | null;
     quantity: number;
     unitPrice: number;
     lineTotal: number;
@@ -173,23 +187,33 @@ export async function createOrder(
   for (const item of input.items) {
     const product = await fetchProductByIdentifier(item.productId);
 
-    if (product.status === "out_of_stock" || product.status === "draft") {
-      throw new ValidationError(`${product.product_name} is not available`);
+    if (product) {
+      if (product.status === "out_of_stock" || product.status === "draft") {
+        throw new ValidationError(`${product.product_name} is not available`);
+      }
+
+      if (product.stock_qty < item.quantity) {
+        throw new ValidationError(
+          `Insufficient stock for ${product.product_name}. Available: ${product.stock_qty}`
+        );
+      }
     }
 
-    if (product.stock_qty < item.quantity) {
-      throw new ValidationError(
-        `Insufficient stock for ${product.product_name}. Available: ${product.stock_qty}`
-      );
+    const snapshotName = item.productName.trim();
+    const snapshotPrice = Number(item.unitPrice);
+    if (!product && (!snapshotName || snapshotPrice <= 0)) {
+      throw new NotFoundError(`Product not found: ${item.productId}`);
     }
 
-    const unitPrice = resolveUnitPrice(product);
+    const unitPrice = product ? resolveUnitPrice(product) : snapshotPrice;
     const lineTotal = unitPrice * item.quantity;
-    const imageUrl = await getProductImage(product.id);
+    const imageUrl = product ? await getProductImage(product.id) : item.productImage.trim();
 
     subtotal += lineTotal;
     resolvedItems.push({
       product,
+      productName: product?.product_name ?? snapshotName,
+      productSlug: (product?.slug ?? item.productSlug.trim()) || item.productId,
       quantity: item.quantity,
       unitPrice,
       lineTotal,
@@ -220,15 +244,15 @@ export async function createOrder(
     .select()
     .single();
 
-  if (orderError) throw new Error(`Failed to create order: ${orderError.message}`);
+  if (orderError) raiseOrderDbError("Failed to create order", orderError);
 
   const order = orderData as OrderRow;
 
   const itemRows = resolvedItems.map((item) => ({
     order_id: order.id,
-    product_id: item.product.id,
-    product_name: item.product.product_name,
-    product_slug: item.product.slug,
+    product_id: item.product?.id ?? null,
+    product_name: item.productName,
+    product_slug: item.productSlug,
     product_image: item.imageUrl,
     unit_price: item.unitPrice,
     quantity: item.quantity,
@@ -246,7 +270,9 @@ export async function createOrder(
   }
 
   for (const item of resolvedItems) {
-    await deductStock(item.product, item.quantity);
+    if (item.product) {
+      await deductStock(item.product, item.quantity);
+    }
   }
 
   const items = ((insertedItems ?? []) as OrderItemRow[]).map(toOrderItemProfile);

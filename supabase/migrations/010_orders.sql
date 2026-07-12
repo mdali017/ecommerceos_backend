@@ -48,3 +48,6 @@ CREATE TRIGGER orders_updated_at
 
 ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE order_items ENABLE ROW LEVEL SECURITY;
+
+-- Refresh PostgREST schema cache so API sees new tables immediately
+NOTIFY pgrst, 'reload schema';
