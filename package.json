@@ -24,7 +24,8 @@
     "setup:default-products": "tsx src/scripts/setup-default-products.ts",
     "setup:homepage-product-sections": "tsx src/scripts/setup-homepage-product-sections.ts",
     "setup:products": "tsx src/scripts/setup-products.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "vercel-build": "tsc"
   },
   "keywords": [],
   "author": "",
