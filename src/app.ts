@@ -8,11 +8,16 @@ import { errorHandler } from "./shared/middleware/error.middleware";
 
 const app = express();
 
+const allowAllOrigins = env.CORS_ORIGIN.trim() === "*";
+const corsOrigins = env.CORS_ORIGIN.split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
 app.use(helmet());
 app.use(
   cors({
-    origin: env.CORS_ORIGIN.split(",").map((origin) => origin.trim()),
-    credentials: true,
+    origin: allowAllOrigins ? "*" : corsOrigins,
+    credentials: !allowAllOrigins,
   })
 );
 app.use(morgan(env.NODE_ENV === "development" ? "dev" : "combined"));
