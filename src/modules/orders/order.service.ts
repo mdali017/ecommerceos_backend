@@ -8,6 +8,7 @@ import {
   notifyOrderPlaced,
   notifyOrderStatusChanged,
 } from "../notifications/notification.service";
+import { ensureReturnRequestForReturnedOrder } from "../returns/return.service";
 import {
   calculateCheckoutTotals,
   calculateShippingQuote,
@@ -20,6 +21,7 @@ import type {
   OrderRow,
   OrderStatus,
   OrderSummary,
+  PaymentStatus,
 } from "./order.types";
 import type { CreateOrderInput } from "./order.validation";
 
@@ -420,13 +422,16 @@ export async function updateOrderStatus(
 ): Promise<OrderProfile> {
   const current = await getOrderRowByIdentifier(identifier);
 
-  // COD: payment auto-confirms when the order is delivered/completed,
-  // otherwise it stays pending.
-  const paymentStatus = status === "delivered" || status === "completed" ? "paid" : "pending";
+  // When order is completed/delivered, payment becomes paid (COD confirmation).
+  // Do not force other statuses back to pending if payment was already paid.
+  const patch: { status: OrderStatus; payment_status?: PaymentStatus } = { status };
+  if (status === "delivered" || status === "completed") {
+    patch.payment_status = "paid";
+  }
 
   let { data, error } = await supabase
     .from("orders")
-    .update({ status, payment_status: paymentStatus })
+    .update(patch)
     .eq("id", current.id)
     .select()
     .single();
@@ -445,12 +450,38 @@ export async function updateOrderStatus(
 
   const updatedOrder = data as OrderRow;
 
+  // If payment_status column exists but wasn't returned/updated for an older row path,
+  // ensure completed/delivered orders are marked paid.
+  if (
+    (status === "delivered" || status === "completed") &&
+    updatedOrder.payment_status !== "paid"
+  ) {
+    const { data: paidRow, error: paidError } = await supabase
+      .from("orders")
+      .update({ payment_status: "paid" })
+      .eq("id", current.id)
+      .select()
+      .single();
+
+    if (!paidError && paidRow) {
+      Object.assign(updatedOrder, paidRow);
+    }
+  }
+
   if (updatedOrder.customer_id && updatedOrder.status !== current.status) {
     await notifyOrderStatusChanged(
       updatedOrder.customer_id,
       updatedOrder.order_number,
       updatedOrder.status
     ).catch(() => undefined);
+  }
+
+  if (status === "returned" && current.status !== "returned") {
+    await ensureReturnRequestForReturnedOrder({
+      id: updatedOrder.id,
+      customer_id: updatedOrder.customer_id,
+      order_number: updatedOrder.order_number,
+    }).catch(() => undefined);
   }
 
   const items = await fetchOrderItems(current.id);

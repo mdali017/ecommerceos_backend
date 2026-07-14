@@ -164,3 +164,49 @@ export async function updateReturnStatus(
 
   return toAdminReturnProfile(row);
 }
+
+/** When admin marks an order as returned, ensure it appears in Returns table. */
+export async function ensureReturnRequestForReturnedOrder(order: {
+  id: string;
+  customer_id: string | null;
+  order_number: string;
+}): Promise<void> {
+  const { data: existing, error: lookupError } = await supabase
+    .from("return_requests")
+    .select("id")
+    .eq("order_id", order.id)
+    .maybeSingle();
+
+  if (lookupError) {
+    if (
+      lookupError.message.includes("Could not find the table") &&
+      lookupError.message.includes("return_requests")
+    ) {
+      return;
+    }
+    throw new Error(`Failed to check return request: ${lookupError.message}`);
+  }
+
+  if (existing) return;
+
+  const { error } = await supabase.from("return_requests").insert({
+    order_id: order.id,
+    customer_id: order.customer_id,
+    reason: "Marked as returned by admin",
+    description: `Order ${order.order_number} was set to Returned from Order Management.`,
+    status: "approved",
+    admin_notes: "Auto-created when order status changed to returned.",
+  });
+
+  if (error) {
+    if (
+      error.message.includes("Could not find the table") &&
+      error.message.includes("return_requests")
+    ) {
+      return;
+    }
+    // Unique race / duplicate — ignore
+    if (error.message.toLowerCase().includes("duplicate")) return;
+    throw new Error(`Failed to create return request: ${error.message}`);
+  }
+}

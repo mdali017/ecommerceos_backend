@@ -98,15 +98,26 @@ export async function listCustomers(): Promise<AdminCustomerSummary[]> {
 
   const { data: orderRows, error: ordersError } = await supabase
     .from("orders")
-    .select("customer_id");
+    .select("customer_id, status");
 
   if (ordersError) throw new Error(`Failed to count customer orders: ${ordersError.message}`);
 
   const orderCountByCustomer = new Map<string, number>();
+  const completedCountByCustomer = new Map<string, number>();
+
   for (const row of orderRows ?? []) {
-    const customerId = (row as { customer_id: string | null }).customer_id;
-    if (!customerId) continue;
-    orderCountByCustomer.set(customerId, (orderCountByCustomer.get(customerId) ?? 0) + 1);
+    const order = row as { customer_id: string | null; status: string };
+    if (!order.customer_id) continue;
+    orderCountByCustomer.set(
+      order.customer_id,
+      (orderCountByCustomer.get(order.customer_id) ?? 0) + 1
+    );
+    if (order.status === "completed") {
+      completedCountByCustomer.set(
+        order.customer_id,
+        (completedCountByCustomer.get(order.customer_id) ?? 0) + 1
+      );
+    }
   }
 
   return (customers ?? []).map((row) => {
@@ -128,6 +139,7 @@ export async function listCustomers(): Promise<AdminCustomerSummary[]> {
       address: customer.address,
       source: customer.source,
       orderCount: orderCountByCustomer.get(customer.id) ?? 0,
+      completedOrderCount: completedCountByCustomer.get(customer.id) ?? 0,
       createdAt: customer.created_at,
     };
   });

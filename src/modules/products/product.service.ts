@@ -565,10 +565,17 @@ export async function updateProduct(
       : currentRow.slug;
 
   const row = mapInputToDbRow(merged, slug);
-  const imageUrls = [
-    ...(input.imageUrl?.trim() ? [input.imageUrl.trim()] : []),
-    ...(input.imageUrls ?? []),
-  ].filter(Boolean);
+  const imagesTouched = input.imageUrls !== undefined;
+
+  if (imagesTouched) {
+    const imageUrls = [
+      ...(input.imageUrl?.trim() ? [input.imageUrl.trim()] : []),
+      ...(input.imageUrls ?? []),
+    ].filter((url, index, arr) => Boolean(url) && arr.indexOf(url) === index);
+
+    row.image_url = imageUrls[0] || "";
+    merged.imageUrl = imageUrls[0] || "";
+  }
 
   const { data, error } = await supabase
     .from("products")
@@ -580,9 +587,15 @@ export async function updateProduct(
   if (error) throw new Error(`Product update failed: ${error.message}`);
 
   const product = data as ProductRow;
-  if (imageUrls.length > 0) {
+
+  if (imagesTouched) {
+    const imageUrls = [
+      ...(input.imageUrl?.trim() ? [input.imageUrl.trim()] : []),
+      ...(input.imageUrls ?? []),
+    ].filter((url, index, arr) => Boolean(url) && arr.indexOf(url) === index);
+
     await replaceProductImages(product.id, imageUrls);
-    return toProductProfile(product, imageUrls);
+    return toProductProfile({ ...product, image_url: imageUrls[0] || "" }, imageUrls);
   }
 
   const images = await getProductImages(product.id);

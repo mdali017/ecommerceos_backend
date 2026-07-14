@@ -48,6 +48,8 @@ export const createProductSchema = bulkProductItemSchema;
 export const updateProductSchema = bulkProductItemSchema.partial().extend({
   sku: z.string().trim().min(1).optional(),
   productName: z.string().trim().min(1).optional(),
+  // Override default([]) so omitted imageUrls means "don't touch gallery"
+  imageUrls: z.array(z.string()).optional(),
 });
 
 export const publicProductsQuerySchema = z.object({
