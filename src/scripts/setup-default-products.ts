@@ -29,7 +29,7 @@ async function main() {
     await client.end();
   }
 
-  console.log("Default Khaas Food products seeded.");
+  console.log("Default Ecommerce OS products seeded.");
 }
 
 main().catch((err) => {
